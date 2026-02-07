@@ -34,6 +34,7 @@ const App: React.FC = () => {
         const hasKey = await aistudio.hasSelectedApiKey();
         setNeedsKeySelection(!hasKey);
       } else {
+        // aistudioオブジェクトがない場合は、process.env.API_KEYの有無で判断
         setNeedsKeySelection(!process.env.API_KEY);
       }
       setHasCheckedKey(true);
@@ -44,9 +45,14 @@ const App: React.FC = () => {
   const handleOpenSelectKey = async () => {
     const aistudio = (window as any).aistudio;
     if (aistudio && typeof aistudio.openSelectKey === 'function') {
-      await aistudio.openSelectKey();
-      setNeedsKeySelection(false);
+      try {
+        await aistudio.openSelectKey();
+      } catch (e) {
+        console.error("Failed to open key selection dialog:", e);
+      }
     }
+    // レースコンディション回避のため、aistudioの有無に関わらず即座に状態を更新してアプリへ進む
+    setNeedsKeySelection(false);
   };
 
   useEffect(() => {
@@ -61,6 +67,7 @@ const App: React.FC = () => {
     setLoadingMsg('AIがもんだいをよんでいるよ...');
 
     try {
+      // API呼び出しの直前に新しいインスタンスを作成する（最新のAPIキーを使用するため）
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
       
       const reader = new FileReader();
@@ -126,9 +133,11 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error("AI Quest Error:", error);
       const errorMessage = error?.message || "";
+      
+      // キーが無効な場合のエラーハンドリング
       if (errorMessage.includes("Requested entity was not found")) {
         setNeedsKeySelection(true);
-        alert("APIキーを えらびなおしてね！");
+        alert("APIキーが うまくみつからなかったよ。もういちど キーをえらんでね！");
       } else {
         alert("AIが もんだいを つくれなかったみたい。しゃしんを かえて もういちど ためしてね！");
       }
@@ -206,50 +215,49 @@ const App: React.FC = () => {
               {gameState.status === AppStatus.RETRY_SUMMARY ? 'リザルト' : `${Math.min(gameState.currentIndex + 1, gameState.problems.length)} / ${gameState.problems.length}`}
             </span>
           )}
-          <button onClick={resetGame} className="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-2 rounded-full font-bold transition-all text-sm">
-            やりなおす
-          </button>
+          {!needsKeySelection && (
+            <button onClick={resetGame} className="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-2 rounded-full font-bold transition-all text-sm">
+              さいしょから
+            </button>
+          )}
         </div>
       </div>
 
       <div className="flex-1 flex flex-col gap-4 min-h-0">
-        {gameState.status === AppStatus.IDLE ? (
+        {needsKeySelection ? (
           <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-[3rem] shadow-2xl border-4 border-sky-200 p-12 text-center relative overflow-hidden">
-            {/* Background elements */}
-            <div className="absolute top-10 left-10 text-6xl opacity-20">➕</div>
-            <div className="absolute bottom-10 right-10 text-6xl opacity-20">➖</div>
-            <div className="absolute top-1/2 left-20 text-4xl opacity-10">✖️</div>
-            <div className="absolute bottom-1/3 right-20 text-4xl opacity-10">➗</div>
-
             <div className="text-9xl mb-8 animate-bounce">🎒</div>
             <h2 className="text-4xl md:text-6xl font-black text-slate-800 mb-6 tracking-tight">
               さんすうの ぼうけんへ！
             </h2>
-            
-            {needsKeySelection ? (
-              <div className="flex flex-col items-center gap-6">
-                <p className="text-xl text-slate-500 font-bold mb-4">
-                  Googleアカウントで ログインして はじめよう！
-                </p>
-                <button 
-                  onClick={handleOpenSelectKey}
-                  className="group flex items-center gap-4 bg-sky-500 hover:bg-sky-600 text-white px-12 py-6 rounded-full text-3xl font-black shadow-[0_10px_0_rgb(3,105,161)] active:shadow-none active:translate-y-[10px] transition-all"
-                >
-                  <img src="https://www.google.com/favicon.ico" alt="" className="w-8 h-8 bg-white rounded-full p-1" />
-                  <span>ぼうけんを はじめる</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-6">
-                <p className="text-xl text-slate-500 font-bold mb-4">
-                  ドリルの しゃしんを アップロードしてね
-                </p>
-                <label className="group cursor-pointer bg-sky-500 hover:bg-sky-600 text-white px-12 py-6 rounded-full text-3xl font-black shadow-[0_10px_0_rgb(3,105,161)] active:shadow-none active:translate-y-[10px] transition-all inline-block">
-                  <span>📸 しゃしんを とる</span>
-                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                </label>
-              </div>
-            )}
+            <div className="flex flex-col items-center gap-6">
+              <p className="text-xl text-slate-500 font-bold mb-4">
+                Googleアカウントで ログインして はじめよう！
+              </p>
+              <button 
+                onClick={handleOpenSelectKey}
+                className="group flex items-center gap-4 bg-sky-500 hover:bg-sky-600 text-white px-12 py-6 rounded-full text-3xl font-black shadow-[0_10px_0_rgb(3,105,161)] active:shadow-none active:translate-y-[10px] transition-all"
+              >
+                <img src="https://www.google.com/favicon.ico" alt="" className="w-8 h-8 bg-white rounded-full p-1" />
+                <span>ぼうけんを はじめる</span>
+              </button>
+            </div>
+          </div>
+        ) : gameState.status === AppStatus.IDLE ? (
+          <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-[3rem] shadow-2xl border-4 border-dashed border-sky-300 p-12 text-center relative overflow-hidden animate-in fade-in duration-500">
+            <div className="text-9xl mb-8 animate-pulse">📸</div>
+            <h2 className="text-3xl md:text-5xl font-black text-slate-800 mb-6 tracking-tight">
+              ドリルの しゃしんを アップしよう！
+            </h2>
+            <div className="flex flex-col items-center gap-6">
+              <p className="text-xl text-slate-500 font-bold mb-4">
+                AIが もんだいをつくって くれるよ
+              </p>
+              <label className="group cursor-pointer bg-sky-500 hover:bg-sky-600 text-white px-12 py-6 rounded-full text-3xl font-black shadow-[0_10px_0_rgb(3,105,161)] active:shadow-none active:translate-y-[10px] transition-all inline-block">
+                <span>📸 しゃしんを とる</span>
+                <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+              </label>
+            </div>
           </div>
         ) : gameState.status === AppStatus.LOADING ? (
           <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-[3rem] p-8 text-center border-4 border-sky-100">
