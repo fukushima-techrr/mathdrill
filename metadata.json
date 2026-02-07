@@ -1,0 +1,7 @@
+{
+  "name": "Copy of AI さんすうクエスト",
+  "description": "小学生向けの算数ドリルアプリ。写真を撮って類題を生成し、Apple Pencil対応のメモエリアで楽しく学習できます。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
