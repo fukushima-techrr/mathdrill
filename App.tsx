@@ -48,22 +48,23 @@ const App: React.FC = () => {
       reader.readAsDataURL(file);
       const base64Data = await base64Promise;
 
-      // Initialize AI inside the handler to ensure the latest injected key is used
+      // Use gemini-3-pro-preview for complex math reasoning tasks
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
       
       const prompt = `
         この算数ドリルの画像から、算数の問題を抽出し、それに基づいた「類題（数値や設定が異なるが、解き方のロジックは同じ問題）」を5問作成してください。
         
-        制約:
-        - 3択クイズ形式にすること。
-        - 答えは必ず選択肢の中に1つだけ含めること。
+        重要事項:
+        - 必ず3択クイズ形式にすること。
+        - 選択肢の中に、計算ミスをしやすい誤答も含めること。
+        - 正解は必ず選択肢の中に1つだけ含めること。
+        - 答えの数値だけでなく、単位（cm, こ, 円など）も必要であれば含めること。
         - 小学生が理解できる優しい日本語を使うこと。
-        - 画像に複数の問題がある場合は、代表的なものをベースに類題を作ってください。
-        - 構造化されたJSON形式で出力すること。
+        - 出力は指定されたJSONスキーマに従うこと。
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3-pro-preview",
         contents: [
           {
             parts: [
@@ -81,7 +82,7 @@ const App: React.FC = () => {
               properties: {
                 question: { type: Type.STRING, description: "問題文" },
                 options: { type: Type.ARRAY, items: { type: Type.STRING }, description: "3つの選択肢" },
-                answerIndex: { type: Type.NUMBER, description: "正解のインデックス(0-2)" }
+                answerIndex: { type: Type.NUMBER, description: "正解のインデックス(0, 1, または 2)" }
               },
               required: ["question", "options", "answerIndex"]
             }
@@ -89,8 +90,16 @@ const App: React.FC = () => {
         }
       });
 
-      const generatedProblems: MathProblem[] = JSON.parse(response.text || "[]").map((p: any, i: number) => ({
-        ...p,
+      const textResponse = response.text;
+      if (!textResponse) {
+        throw new Error("Empty response from AI");
+      }
+
+      const parsedData = JSON.parse(textResponse);
+      const generatedProblems: MathProblem[] = (Array.isArray(parsedData) ? parsedData : []).map((p: any, i: number) => ({
+        question: p.question || "もんだいを取得できませんでした",
+        options: Array.isArray(p.options) ? p.options : ["?", "?", "?"],
+        answerIndex: typeof p.answerIndex === 'number' ? p.answerIndex : 0,
         id: `prob-${Date.now()}-${i}`
       }));
 
@@ -106,10 +115,14 @@ const App: React.FC = () => {
         isCorrect: null
       });
     } catch (error: any) {
-      console.error("Gemini Error:", error);
+      console.error("AI Quest Error:", error);
       
-      if (error?.message?.includes("Requested entity was not found")) {
-        alert("AIのじゅんびができていないみたい。もういちど さいしょから やってみてね。");
+      // Handle potential safety blocks or API errors
+      const errorMessage = error?.message || "";
+      if (errorMessage.includes("Requested entity was not found")) {
+        alert("AIのじゅんびができていないみたい。設定をかくにんしてね。");
+      } else if (errorMessage.includes("safety")) {
+        alert("この画像はAIがよめなかったよ。ほかの写真をためしてみてね。");
       } else {
         alert("AIが もんだいを つくれなかったみたい。しゃしんを かえて もういちど ためしてね！");
       }
