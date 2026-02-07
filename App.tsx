@@ -1,11 +1,9 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { MathProblem, AppStatus, GameState } from './types';
 import { soundService } from './services/sound';
 import ScratchPad from './components/ScratchPad';
-
-const API_KEY = process.env.API_KEY || ""; // Handled by environment
 
 const App: React.FC = () => {
   // State initialization with sessionStorage fallback
@@ -34,10 +32,7 @@ const App: React.FC = () => {
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !API_KEY) {
-      if (!API_KEY) alert("APIキーが設定されていません。");
-      return;
-    }
+    if (!file) return;
 
     setGameState(prev => ({ ...prev, status: AppStatus.LOADING }));
     setLoadingMsg('AIがもんだいをよんでいるよ...');
@@ -53,14 +48,17 @@ const App: React.FC = () => {
       reader.readAsDataURL(file);
       const base64Data = await base64Promise;
 
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      // Initialize AI inside the handler to ensure the latest injected key is used
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+      
       const prompt = `
-        この算数ドリルの画像から、算数の問題を抽出し、それに基づいた「類題（似た形式だが数値や設定が異なる問題）」を5問作成してください。
+        この算数ドリルの画像から、算数の問題を抽出し、それに基づいた「類題（数値や設定が異なるが、解き方のロジックは同じ問題）」を5問作成してください。
         
         制約:
         - 3択クイズ形式にすること。
         - 答えは必ず選択肢の中に1つだけ含めること。
-        - 小学生が理解できる日本語を使うこと。
+        - 小学生が理解できる優しい日本語を使うこと。
+        - 画像に複数の問題がある場合は、代表的なものをベースに類題を作ってください。
         - 構造化されたJSON形式で出力すること。
       `;
 
@@ -91,10 +89,14 @@ const App: React.FC = () => {
         }
       });
 
-      const generatedProblems: MathProblem[] = JSON.parse(response.text).map((p: any, i: number) => ({
+      const generatedProblems: MathProblem[] = JSON.parse(response.text || "[]").map((p: any, i: number) => ({
         ...p,
         id: `prob-${Date.now()}-${i}`
       }));
+
+      if (generatedProblems.length === 0) {
+        throw new Error("No problems generated");
+      }
 
       setGameState({
         problems: generatedProblems,
@@ -103,9 +105,15 @@ const App: React.FC = () => {
         status: AppStatus.PLAYING,
         isCorrect: null
       });
-    } catch (error) {
-      console.error(error);
-      alert("エラーがおきたよ。もういちどためしてね！");
+    } catch (error: any) {
+      console.error("Gemini Error:", error);
+      
+      if (error?.message?.includes("Requested entity was not found")) {
+        alert("AIのじゅんびができていないみたい。もういちど さいしょから やってみてね。");
+      } else {
+        alert("AIが もんだいを つくれなかったみたい。しゃしんを かえて もういちど ためしてね！");
+      }
+      
       setGameState(prev => ({ ...prev, status: AppStatus.IDLE }));
     }
   };
@@ -148,7 +156,6 @@ const App: React.FC = () => {
           isCorrect: null
         };
       });
-      // Clear memo for each new problem
       if (clearCanvasRef.current) clearCanvasRef.current();
     }, 1200);
   };
@@ -235,7 +242,6 @@ const App: React.FC = () => {
 
         {(gameState.status === AppStatus.PLAYING || gameState.status === AppStatus.FEEDBACK) && (
           <>
-            {/* Top Half: Question & Answer */}
             <div className="h-1/2 flex flex-col gap-4 relative">
               <div className="flex-1 bg-white rounded-3xl shadow-lg border-4 border-sky-100 p-6 overflow-y-auto">
                 <div className="text-xl md:text-3xl font-bold leading-relaxed text-slate-700">
@@ -256,17 +262,15 @@ const App: React.FC = () => {
                 ))}
               </div>
 
-              {/* Feedback Overlay */}
               {gameState.status === AppStatus.FEEDBACK && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
-                  <div className={`text-[12rem] md:text-[20rem] font-black animate-ping drop-shadow-2xl ${gameState.isCorrect ? 'text-rose-500' : 'text-blue-500'}`}>
+                  <div className={`text-[12rem] md:text-[20rem] font-black animate-stamp drop-shadow-2xl ${gameState.isCorrect ? 'text-rose-500' : 'text-blue-500'}`}>
                     {gameState.isCorrect ? '◯' : '×'}
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Bottom Half: ScratchPad */}
             <div className="h-1/2 flex flex-col gap-2 min-h-0">
               <div className="flex justify-between items-center px-2">
                 <span className="text-sm font-bold text-slate-400">けいさんメモ</span>

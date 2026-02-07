@@ -16,6 +16,17 @@
         .canvas-container {
             touch-action: none;
         }
+
+        /* カスタムスタンプアニメーション (二重に見えないスッキリした動き) */
+        @keyframes stamp-pop {
+            0% { transform: scale(2); opacity: 0; }
+            30% { transform: scale(1); opacity: 1; }
+            80% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-stamp {
+            animation: stamp-pop 1s cubic-bezier(0.17, 0.89, 0.32, 1.28) forwards;
+        }
     </style>
 <script type="importmap">
 {
